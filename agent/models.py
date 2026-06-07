@@ -47,6 +47,7 @@ class RootCauseHypothesis(BaseModel):
     contributing_factors: list[str] = Field(default_factory=list)
     confidence: float = 0.0
     evidence: list[str] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)
 
 
 class SimilarIncident(BaseModel):

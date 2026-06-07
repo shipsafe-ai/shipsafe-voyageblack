@@ -12,6 +12,12 @@ const HORMUZ_PRESET = {
   end_time: "2026-06-01T15:02:00Z",
 };
 
+const GENERIC_PRESET = {
+  incident_id: "AUTH-OUTAGE-2026-0607",
+  start_time: "2026-06-07T09:01:00Z",
+  end_time: "2026-06-07T09:06:00Z",
+};
+
 type StageEvent = {
   stage: string;
   status?: string;
@@ -102,6 +108,7 @@ export default function Home() {
           } else if (ev.stage === "__result__") {
             const id = (ev.result as { draft?: { incident_id?: string } })?.draft?.incident_id;
             if (id) {
+              sessionStorage.setItem(`voyageblack:result:${id}`, JSON.stringify(ev.result));
               setResultId(id);
               setTimeout(() => router.push(`/postmortem/${id}`), 800);
             }
@@ -180,6 +187,12 @@ export default function Home() {
             className="text-xs text-text-tertiary hover:text-text-secondary transition-colors"
           >
             Load Hormuz Demo
+          </button>
+          <button
+            onClick={() => { setIncidentId(GENERIC_PRESET.incident_id); setStartTime(GENERIC_PRESET.start_time); setEndTime(GENERIC_PRESET.end_time); }}
+            className="text-xs text-text-tertiary hover:text-text-secondary transition-colors"
+          >
+            Load Auth Outage Demo
           </button>
           {running && (
             <span className="font-mono text-sm text-signal-warn tabular-nums">

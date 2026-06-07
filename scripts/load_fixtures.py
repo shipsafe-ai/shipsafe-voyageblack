@@ -116,6 +116,8 @@ def main() -> None:
         else:
             print(f"  ✗ Seed failed ({resp.status_code}): {resp.text[:200]}")
 
+    # Parseable summary line for /demo/seed endpoint
+    print(f"SEEDED_COUNT:{len(LOG_ENTRIES)}")
     print("\nDone. Wait ~30s for ELSER to embed semantic_content fields.")
     print("Then: python scripts/verify_mcp.py")
 

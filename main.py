@@ -162,7 +162,6 @@ async def run_stream(
             })
 
             # Stage 6
-            from agent.critic import Critic
             verdict = await Critic().review(draft)
             draft.status = "draft"
             yield emit("Critic", {
@@ -423,14 +422,56 @@ async def demo_seed(dry_run: bool = False) -> dict:
         )
         seeded = 0
         for line in (result.stdout or "").splitlines():
-            if "seeded" in line.lower():
-                for word in line.split():
-                    if word.isdigit():
-                        seeded = int(word)
-                        break
+            if line.startswith("SEEDED_COUNT:"):
+                try:
+                    seeded = int(line.split(":", 1)[1].strip())
+                except ValueError:
+                    pass
+                break
         return {
             "status": "ok" if result.returncode == 0 else "error",
             "seeded": seeded,
+            "stdout": result.stdout[-500:] if result.stdout else "",
+            "stderr": result.stderr[-500:] if result.stderr else "",
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/demo/seed/generic")
+async def demo_seed_generic(dry_run: bool = False) -> dict:
+    """Bulk-load generic (non-maritime) incident fixtures — auth→payment→notification cascade.
+
+    Demonstrates VoyageBlack works for any ops team, not just maritime.
+    Incident: OIDC token validation bug cascades across auth/payment/notification services.
+    incident_id: AUTH-OUTAGE-2026-0607
+    window: 2026-06-07T09:01:00Z → 2026-06-07T09:06:00Z
+    """
+    if dry_run:
+        return {"status": "dry_run", "message": "Seed skipped — dry_run=true"}
+    try:
+        import subprocess
+        import sys
+        result = subprocess.run(
+            [sys.executable, "scripts/load_generic_fixtures.py"],
+            capture_output=True,
+            text=True,
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+        )
+        seeded = 0
+        for line in (result.stdout or "").splitlines():
+            if line.startswith("SEEDED_COUNT:"):
+                try:
+                    seeded = int(line.split(":", 1)[1].strip())
+                except ValueError:
+                    pass
+                break
+        return {
+            "status": "ok" if result.returncode == 0 else "error",
+            "seeded": seeded,
+            "incident_id": "AUTH-OUTAGE-2026-0607",
+            "start_time": "2026-06-07T09:01:00Z",
+            "end_time": "2026-06-07T09:06:00Z",
             "stdout": result.stdout[-500:] if result.stdout else "",
             "stderr": result.stderr[-500:] if result.stderr else "",
         }

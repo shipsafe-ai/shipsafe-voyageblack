@@ -108,11 +108,7 @@ class Orchestrator:
             blast_radius=blast_radius,
             root_cause=root_cause,
             similar_incidents=similar_incidents,
-            recommendations=[
-                "Review and revert any recent algorithm changes in affected services.",
-                "Implement automated scenario testing before merging routing changes.",
-                "Add monitoring for AIS signal loss with <5 minute detection threshold.",
-            ],
+            recommendations=root_cause.recommendations,
             status="draft",
         )
 

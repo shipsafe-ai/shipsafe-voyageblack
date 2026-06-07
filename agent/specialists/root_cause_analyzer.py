@@ -29,7 +29,11 @@ Return ONLY this JSON (no prose, no markdown fences):
   "primary_cause": "string — one sentence, specific",
   "contributing_factors": ["string"],
   "confidence": float between 0.0 and 1.0,
-  "evidence": ["string — reference to specific event_id or data point"]
+  "evidence": ["string — reference to specific event_id or data point"],
+  "recommendations": [
+    "string — specific, actionable recommendation derived from the evidence above",
+    "string — each item must reference a specific service, pattern, or failure mode found in the data"
+  ]
 }\
 """
 

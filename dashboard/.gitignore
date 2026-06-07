@@ -1,0 +1,11 @@
+# Build artifacts
+dashboard/.next/
+dashboard/node_modules/
+*.pack
+*.pack.old
+.tsbuildinfo
+
+# Outer duplicate source (real source lives in dashboard/dashboard/)
+/app/
+/components/
+/package.json
