@@ -1,0 +1,24 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-base: #0A0A0B;
+  --accent: #3B82F6;
+}
+
+* {
+  border-color: #3F3F46;
+}
+
+body {
+  background-color: #0A0A0B;
+  color: #FAFAFA;
+  font-family: Geist, system-ui, sans-serif;
+}
+
+.font-mono {
+  font-family: "DM Mono", "Fira Code", monospace;
+}

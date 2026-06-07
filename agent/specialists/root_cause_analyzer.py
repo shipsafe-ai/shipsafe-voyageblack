@@ -1,0 +1,153 @@
+"""RootCauseAnalyzer — pure Gemini reasoning over structured specialist outputs."""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+
+from google.adk.agents import Agent
+from google.adk.runners import Runner
+from google.adk.sessions import InMemorySessionService
+from google.genai import types as genai_types
+
+from agent.models import BlastRadius, IncidentTimeline, RootCauseHypothesis, ServiceCorrelation
+
+_INSTRUCTION = """\
+You are RootCauseAnalyzer, incident root cause expert for VoyageBlack.
+
+You receive structured data (JSON) from upstream specialists — NOT raw log text.
+Use your reasoning to identify the primary cause and contributing factors.
+
+Evidence quality guide:
+- Cascade depth 0 correlations = potential root cause services
+- Events tightly clustered in time after an anomaly = indicators, not causes
+- high cascade_depth + early timestamp = cascading victim, not origin
+
+Return ONLY this JSON (no prose, no markdown fences):
+{
+  "primary_cause": "string — one sentence, specific",
+  "contributing_factors": ["string"],
+  "confidence": float between 0.0 and 1.0,
+  "evidence": ["string — reference to specific event_id or data point"]
+}\
+"""
+
+
+def _parse_llm_response(text: str) -> RootCauseHypothesis | None:
+    text = text.strip()
+    if not text:
+        return None
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+    for candidate in [text, *re.findall(r"\{[\s\S]*\}", text)]:
+        try:
+            return RootCauseHypothesis.model_validate_json(candidate)
+        except Exception:
+            pass
+        try:
+            return RootCauseHypothesis(**json.loads(candidate))
+        except Exception:
+            pass
+    return None
+
+
+def _fallback(timeline: IncidentTimeline, correlations: list[ServiceCorrelation]) -> RootCauseHypothesis:
+    root_svc = correlations[0].service if correlations else "unknown"
+    return RootCauseHypothesis(
+        primary_cause=f"Root cause analysis unavailable — suspected origin: {root_svc}",
+        contributing_factors=[c.service for c in correlations[1:3]],
+        confidence=0.0,
+        evidence=[],
+    )
+
+
+class RootCauseAnalyzer:
+    """Pure Gemini reasoning — no MCP tools.
+
+    Receives structured outputs from TimelineBuilder, CorrelationEngine, and
+    ImpactCalculator. Never receives raw log content directly — only sanitized
+    structured data to prevent prompt injection.
+    """
+
+    def __init__(self) -> None:
+        self._model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+
+    async def run(
+        self,
+        timeline: IncidentTimeline,
+        correlations: list[ServiceCorrelation],
+        blast_radius: BlastRadius,
+    ) -> RootCauseHypothesis:
+        # Pass structured data only — no raw log messages concatenated
+        structured_input = {
+            "incident_id": timeline.correlation_id,
+            "duration_minutes": blast_radius.estimated_duration_minutes,
+            "services_involved": timeline.services_involved,
+            "cascade_chain": blast_radius.cascade_chain,
+            "correlations": [
+                {
+                    "service": c.service,
+                    "error_count": c.error_count,
+                    "error_codes": c.error_codes,
+                    "cascade_depth": c.cascade_depth,
+                }
+                for c in correlations
+            ],
+            "timeline_event_count": len(timeline.entries),
+            "event_ids_with_errors": [
+                e.event_id for e in timeline.entries
+                if e.level in ("CRITICAL", "ERROR") and e.event_id
+            ],
+        }
+
+        prompt = (
+            "Analyze incident root cause from structured specialist data.\n\n"
+            f"=== Structured Data ===\n{json.dumps(structured_input, indent=2)}\n\n"
+            "Identify primary_cause, contributing_factors, confidence, evidence. "
+            "Return RootCauseHypothesis JSON."
+        )
+
+        try:
+            agent = Agent(
+                model=self._model,
+                name="root_cause_analyzer",
+                instruction=_INSTRUCTION,
+                tools=[],
+            )
+            session_service = InMemorySessionService()
+            session = await session_service.create_session(
+                app_name="voyageblack", user_id="system"
+            )
+            runner = Runner(
+                agent=agent,
+                app_name="voyageblack",
+                session_service=session_service,
+            )
+
+            result_text = ""
+            _json_fallback = ""
+            async for event in runner.run_async(
+                user_id="system",
+                session_id=session.id,
+                new_message=genai_types.Content(
+                    role="user",
+                    parts=[genai_types.Part(text=prompt)],
+                ),
+            ):
+                if event.content and event.content.parts:
+                    for part in event.content.parts:
+                        if hasattr(part, "text") and part.text:
+                            if event.is_final_response():
+                                result_text = part.text
+                            elif "{" in part.text:
+                                _json_fallback = part.text
+            if not result_text:
+                result_text = _json_fallback
+        except Exception:
+            return _fallback(timeline, correlations)
+
+        hypothesis = _parse_llm_response(result_text)
+        if hypothesis is None:
+            return _fallback(timeline, correlations)
+        return hypothesis
