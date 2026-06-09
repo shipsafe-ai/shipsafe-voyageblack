@@ -1,6 +1,8 @@
-"""Shared ADK runner helper with Gemini thinking token collection."""
+"""Shared runner helpers with Gemini thinking token collection."""
 
 from __future__ import annotations
+
+import os
 
 from google.adk.agents import Agent
 from google.adk.runners import Runner
@@ -15,10 +17,10 @@ async def run_agent_with_thinking(
     tools: list,
     prompt: str,
 ) -> tuple[str, str]:
-    """Run ADK agent with Gemini thinking enabled.
+    """Run ADK agent (for MCP-tool specialists).
 
-    Returns (response_text, thinking_text). thinking_text contains Gemini's
-    chain-of-thought tokens — empty string if model returns none.
+    Returns (response_text, thinking_text). ADK runner may not expose thought
+    parts — use run_gemini_direct_with_thinking() for no-tool specialists.
     """
     agent = Agent(
         model=model,
@@ -58,3 +60,46 @@ async def run_agent_with_thinking(
                         _json_fallback = text
 
     return (result_text or _json_fallback), "\n\n".join(thinking_parts)
+
+
+async def run_gemini_direct_with_thinking(
+    model: str,
+    system_instruction: str,
+    prompt: str,
+) -> tuple[str, str]:
+    """Direct google.genai API call — reliably captures thought parts.
+
+    Use for no-tool specialists (RootCauseAnalyzer, Critic) where ADK is
+    unnecessary and doesn't reliably expose thought parts through events.
+    Returns (response_text, thinking_text).
+    """
+    from google import genai
+
+    use_vertex = os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in ("1", "true")
+    if use_vertex:
+        project = os.environ.get("GOOGLE_CLOUD_PROJECT", os.environ.get("GCLOUD_PROJECT", ""))
+        location = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
+        client = genai.Client(vertexai=True, project=project, location=location)
+    else:
+        client = genai.Client()
+
+    response = await client.aio.models.generate_content(
+        model=model,
+        contents=prompt,
+        config=genai_types.GenerateContentConfig(
+            system_instruction=system_instruction,
+            thinking_config=genai_types.ThinkingConfig(include_thoughts=True),
+        ),
+    )
+
+    result_text = ""
+    thinking_parts: list[str] = []
+
+    if response.candidates:
+        for part in response.candidates[0].content.parts:
+            if getattr(part, "thought", False) and getattr(part, "text", ""):
+                thinking_parts.append(part.text)
+            elif getattr(part, "text", ""):
+                result_text = part.text
+
+    return result_text, "\n\n".join(thinking_parts)

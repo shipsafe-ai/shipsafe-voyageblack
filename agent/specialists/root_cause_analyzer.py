@@ -6,11 +6,6 @@ import json
 import os
 import re
 
-from google.adk.agents import Agent
-from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
-from google.genai import types as genai_types
-
 from agent.models import BlastRadius, IncidentTimeline, RootCauseHypothesis, ServiceCorrelation
 
 _INSTRUCTION = """\
@@ -114,9 +109,9 @@ class RootCauseAnalyzer:
         )
 
         try:
-            from agent.runner_utils import run_agent_with_thinking
-            result_text, self.thinking_text = await run_agent_with_thinking(
-                self._model, "root_cause_analyzer", _INSTRUCTION, [], prompt
+            from agent.runner_utils import run_gemini_direct_with_thinking
+            result_text, self.thinking_text = await run_gemini_direct_with_thinking(
+                self._model, _INSTRUCTION, prompt
             )
         except Exception:
             return _fallback(timeline, correlations)

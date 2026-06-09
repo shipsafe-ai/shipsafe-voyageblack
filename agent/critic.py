@@ -182,9 +182,9 @@ class Critic:
         )
 
         try:
-            from agent.runner_utils import run_agent_with_thinking
-            result_text, self.thinking_text = await run_agent_with_thinking(
-                self._model, "critic", _INSTRUCTION, [], prompt
+            from agent.runner_utils import run_gemini_direct_with_thinking
+            result_text, self.thinking_text = await run_gemini_direct_with_thinking(
+                self._model, _INSTRUCTION, prompt
             )
         except Exception as exc:
             return _safe_reject(f"LLM review failed: {exc}")
