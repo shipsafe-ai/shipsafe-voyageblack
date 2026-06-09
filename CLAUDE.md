@@ -18,9 +18,46 @@ Demo scenarios: Hormuz Crisis (maritime) + Auth OIDC Outage (generic SaaS).
 
 ---
 
-## Build status (June 8)
+## Build status (June 9) — FULLY DEPLOYED ✅
 
-DONE — all committed to main (95578d3):
+Live URLs:
+- Agent API: https://voyageblack-agent-336382452417.us-central1.run.app
+- Dashboard: https://voyageblack-dashboard-336382452417.us-central1.run.app
+- ES MCP Server: https://es-mcp-server-336382452417.us-central1.run.app
+
+Infrastructure verified:
+- All 3 Cloud Run services deployed and healthy (voyageblack-agent, voyageblack-dashboard, es-mcp-server)
+- Both MCP servers green: standaloneOk=true, agentBuilderOk=true
+- 5 Kibana tools created and active in Elastic Agent Builder
+- Elastic Cloud Serverless: my-elasticsearch-project-f7722b (GCP us-central1)
+- Elastic secrets in GCP Secret Manager: ELASTIC_CLOUD_URL, ELASTIC_API_KEY, ELASTIC_MCP_URL, ELASTIC_ES_MCP_URL
+- GOOGLE_GENAI_USE_VERTEXAI=1 in Terraform cloud_run.tf and Cloud Run env
+
+Data seeded:
+- Index template + component template created (handles logs-* data stream restriction)
+- 9 Hormuz crisis logs → logs-hormuz-2026.06.01
+- Red Sea 2024 postmortem → postmortems-shipsafe
+- Flywheel end-to-end verified: POST /run → draft → Critic → requires_human_review=true
+  POST /approve → writes ES. Second run → similar_incidents returns HORMUZ (score 1.0) + REDSEA (score 0.8)
+
+Pending before submission:
+- Generic fixtures not seeded (POST /demo/seed/generic for AUTH-OUTAGE-2026-0607)
+- Dashboard UI — not tested end-to-end in browser
+- CLI (voyageblack demo|connect) — not tested
+- Git commit all changed files
+
+## AIS integration (June 9)
+
+ais_stream.py added to agent/. Captures SafetyBroadcastMessage as log entries for Elasticsearch.
+- get_vessel_positions() — live Hormuz positions
+- get_recent_alerts() — safety broadcasts as incident enrichment
+- format_as_log_entries() — Elasticsearch-compatible format
+- /ais endpoint added to main.py
+AISSTREAM_API_KEY stored in GCP Secret Manager, wired into Cloud Run at startup.
+
+---
+
+## Code was DONE — all committed to main (95578d3):
 
 ```
 agent/

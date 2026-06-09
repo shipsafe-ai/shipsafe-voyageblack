@@ -11,6 +11,7 @@ license = { text = "MIT" }
 authors = [{ name = "Prateek Srivastava", email = "prateek.srivastava2311@gmail.com" }]
 dependencies = [
     "google-adk>=1.0.0",
+    "mcp>=1.0.0",
     "google-cloud-secret-manager>=2.0.0",
     "fastapi>=0.111.0",
     "uvicorn[standard]>=0.29.0",

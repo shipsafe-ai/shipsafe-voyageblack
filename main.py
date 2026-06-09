@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 from contextlib import asynccontextmanager
@@ -13,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from agent.ais_stream import get_recent_alerts, get_vessel_positions, format_as_log_entries, start_ais_feed
 from agent.elastic_mcp import get_elasticsearch_tools
 from agent.models import OrchestrationResult, PostmortemDraft
 from agent.orchestrator import Orchestrator
@@ -26,6 +28,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         init_telemetry("voyageblack")
     except ImportError:
         pass
+    ais_key = os.environ.get("AISSTREAM_API_KEY", "")
+    if ais_key:
+        asyncio.create_task(start_ais_feed(ais_key))
     yield
 
 
@@ -343,6 +348,9 @@ async def mcp_status() -> dict:
     indices: list[str] = []
     agent_builder_tools: list[str] = []
 
+    standalone_error: str = ""
+    agent_builder_error: str = ""
+
     # Test standalone ES MCP
     try:
         tools, toolset = await get_elasticsearch_tools(["list_indices"])
@@ -382,8 +390,8 @@ async def mcp_status() -> dict:
                 indices = [str(i) for i in parsed]
         except Exception:
             pass
-    except Exception:
-        pass
+    except Exception as exc:
+        standalone_error = str(exc)
 
     # Test Agent Builder MCP
     try:
@@ -391,37 +399,59 @@ async def mcp_status() -> dict:
         agent_builder_tools = [t.name for t in ab_tools]
         await ab_toolset.close()
         agent_builder_ok = len(agent_builder_tools) > 0
-    except Exception:
-        pass
+    except Exception as exc:
+        agent_builder_error = str(exc)
 
     return {
         "standaloneOk": standalone_ok,
         "agentBuilderOk": agent_builder_ok,
         "indices": indices,
         "agentBuilderTools": agent_builder_tools,
+        "standaloneError": standalone_error,
+        "agentBuilderError": agent_builder_error,
+    }
+
+
+def _run_script(script: str, cwd: str) -> dict:
+    """Run a Python script as subprocess, return stdout/stderr/returncode."""
+    import subprocess
+    import sys
+    result = subprocess.run(
+        [sys.executable, script],
+        capture_output=True,
+        text=True,
+        cwd=cwd,
+    )
+    return {
+        "returncode": result.returncode,
+        "stdout": result.stdout or "",
+        "stderr": result.stderr or "",
     }
 
 
 @app.post("/demo/seed")
 async def demo_seed(dry_run: bool = False) -> dict:
-    """Bulk-load Hormuz crisis fixtures to Elasticsearch.
+    """Create index mappings + bulk-load Hormuz crisis fixtures to Elasticsearch.
 
+    Runs create_mappings.py first (idempotent), then load_fixtures.py.
     Wait ~30s after this for ELSER to auto-embed semantic_content fields.
     Then POST /run with incident_id=HORMUZ-2026-0601.
     """
     if dry_run:
         return {"status": "dry_run", "message": "Seed skipped — dry_run=true"}
     try:
-        import subprocess
-        import sys
-        result = subprocess.run(
-            [sys.executable, "scripts/load_fixtures.py"],
-            capture_output=True,
-            text=True,
-            cwd=os.path.dirname(os.path.abspath(__file__)),
-        )
+        cwd = os.path.dirname(os.path.abspath(__file__))
+        mapping_result = _run_script("scripts/create_mappings.py", cwd)
+        if mapping_result["returncode"] != 0:
+            return {
+                "status": "error",
+                "stage": "create_mappings",
+                "stdout": mapping_result["stdout"][-500:],
+                "stderr": mapping_result["stderr"][-500:],
+            }
+        fixture_result = _run_script("scripts/load_fixtures.py", cwd)
         seeded = 0
-        for line in (result.stdout or "").splitlines():
+        for line in fixture_result["stdout"].splitlines():
             if line.startswith("SEEDED_COUNT:"):
                 try:
                     seeded = int(line.split(":", 1)[1].strip())
@@ -429,10 +459,11 @@ async def demo_seed(dry_run: bool = False) -> dict:
                     pass
                 break
         return {
-            "status": "ok" if result.returncode == 0 else "error",
+            "status": "ok" if fixture_result["returncode"] == 0 else "error",
             "seeded": seeded,
-            "stdout": result.stdout[-500:] if result.stdout else "",
-            "stderr": result.stderr[-500:] if result.stderr else "",
+            "mappings_stdout": mapping_result["stdout"][-300:],
+            "stdout": fixture_result["stdout"][-500:],
+            "stderr": fixture_result["stderr"][-500:],
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -440,7 +471,7 @@ async def demo_seed(dry_run: bool = False) -> dict:
 
 @app.post("/demo/seed/generic")
 async def demo_seed_generic(dry_run: bool = False) -> dict:
-    """Bulk-load generic (non-maritime) incident fixtures — auth→payment→notification cascade.
+    """Create index mappings + bulk-load generic incident fixtures — auth→payment→notification cascade.
 
     Demonstrates VoyageBlack works for any ops team, not just maritime.
     Incident: OIDC token validation bug cascades across auth/payment/notification services.
@@ -450,16 +481,18 @@ async def demo_seed_generic(dry_run: bool = False) -> dict:
     if dry_run:
         return {"status": "dry_run", "message": "Seed skipped — dry_run=true"}
     try:
-        import subprocess
-        import sys
-        result = subprocess.run(
-            [sys.executable, "scripts/load_generic_fixtures.py"],
-            capture_output=True,
-            text=True,
-            cwd=os.path.dirname(os.path.abspath(__file__)),
-        )
+        cwd = os.path.dirname(os.path.abspath(__file__))
+        mapping_result = _run_script("scripts/create_mappings.py", cwd)
+        if mapping_result["returncode"] != 0:
+            return {
+                "status": "error",
+                "stage": "create_mappings",
+                "stdout": mapping_result["stdout"][-500:],
+                "stderr": mapping_result["stderr"][-500:],
+            }
+        fixture_result = _run_script("scripts/load_generic_fixtures.py", cwd)
         seeded = 0
-        for line in (result.stdout or "").splitlines():
+        for line in fixture_result["stdout"].splitlines():
             if line.startswith("SEEDED_COUNT:"):
                 try:
                     seeded = int(line.split(":", 1)[1].strip())
@@ -467,13 +500,14 @@ async def demo_seed_generic(dry_run: bool = False) -> dict:
                     pass
                 break
         return {
-            "status": "ok" if result.returncode == 0 else "error",
+            "status": "ok" if fixture_result["returncode"] == 0 else "error",
             "seeded": seeded,
             "incident_id": "AUTH-OUTAGE-2026-0607",
             "start_time": "2026-06-07T09:01:00Z",
             "end_time": "2026-06-07T09:06:00Z",
-            "stdout": result.stdout[-500:] if result.stdout else "",
-            "stderr": result.stderr[-500:] if result.stderr else "",
+            "mappings_stdout": mapping_result["stdout"][-300:],
+            "stdout": fixture_result["stdout"][-500:],
+            "stderr": fixture_result["stderr"][-500:],
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
@@ -482,3 +516,15 @@ async def demo_seed_generic(dry_run: bool = False) -> dict:
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))
+
+
+@app.get("/ais")
+async def ais_status() -> dict:
+    """Live AIS safety broadcasts and vessel positions in the Hormuz corridor."""
+    return {
+        "safety_alerts": get_recent_alerts(),
+        "vessels": get_vessel_positions(),
+        "log_entries_available": len(format_as_log_entries()),
+        "description": "Real maritime safety broadcasts from aisstream.io — enriches incident timeline",
+        "source": "aisstream.io",
+    }

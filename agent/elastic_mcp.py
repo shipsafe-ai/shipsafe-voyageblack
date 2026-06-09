@@ -9,6 +9,7 @@ Two MCP servers:
 from __future__ import annotations
 
 import os
+import urllib.request
 
 from google.adk.tools.mcp_tool.mcp_toolset import (
     McpToolset,
@@ -20,21 +21,32 @@ from google.adk.tools.mcp_tool.mcp_toolset import (
 from agent import config
 
 
+def _cloud_run_id_token(audience: str) -> str:
+    """Fetch Google OIDC identity token from GCE metadata server for Cloud Run auth."""
+    url = (
+        "http://metadata.google.internal/computeMetadata/v1/instance/"
+        f"service-accounts/default/identity?audience={audience}"
+    )
+    req = urllib.request.Request(url, headers={"Metadata-Flavor": "Google"})
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        return resp.read().decode()
+
+
 async def get_agent_builder_tools(
     tool_names: list[str] | None = None,
 ) -> tuple[list, McpToolset]:
     """Connect to Elastic Agent Builder MCP endpoint, return (tools, toolset).
 
+    Agent Builder MCP uses streamable HTTP (POST), not SSE.
     Caller MUST call toolset.close() when done.
     Tools available: incident_logs_timewindow, incident_logs_semantic,
     service_error_correlation, similar_past_incident, write_postmortem.
     """
     toolset = McpToolset(
-        connection_params=SseConnectionParams(
+        connection_params=StreamableHTTPConnectionParams(
             url=config.ELASTIC_MCP_URL,
             headers={"Authorization": f"ApiKey {config.ELASTIC_API_KEY}"},
             timeout=30.0,
-            sse_read_timeout=120.0,
         )
     )
     tools = await toolset.get_tools()
@@ -55,9 +67,19 @@ async def get_elasticsearch_tools(
     Tools available: list_indices, get_mappings, search, esql, get_shards.
     """
     if config.ELASTIC_ES_MCP_URL:
+        # Cloud Run service-to-service auth requires Google OIDC identity token.
+        # Audience is the base service URL (strip /mcp path).
+        audience = config.ELASTIC_ES_MCP_URL.removesuffix("/mcp").removesuffix("/")
+        try:
+            token = _cloud_run_id_token(audience)
+            auth_headers = {"Authorization": f"Bearer {token}"}
+        except Exception as e:
+            import logging
+            logging.warning("OIDC token fetch failed for %s: %s", audience, e)
+            auth_headers = {}
         params = StreamableHTTPConnectionParams(
             url=config.ELASTIC_ES_MCP_URL,
-            headers={"Authorization": f"ApiKey {config.ELASTIC_API_KEY}"},
+            headers=auth_headers,
             timeout=30.0,
         )
     else:

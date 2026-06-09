@@ -146,23 +146,38 @@ class ReportWriter:
         return similar if similar is not None else []
 
     async def write(self, draft: PostmortemDraft) -> str:
-        """Write approved postmortem to postmortems-shipsafe via write_postmortem tool.
+        """Write approved postmortem to postmortems-shipsafe.
 
+        Uses Elasticsearch REST API directly — Agent Builder write_postmortem tool
+        is "Index search" type (read-only MCP). Direct REST ensures the document is
+        actually indexed with all fields so ELSER can embed semantic_content.
         MUST only be called after explicit human approval (POST /approve/{incident_id}).
         """
-        prompt = (
-            f"Write this approved postmortem to Elasticsearch.\n\n"
-            f"=== PostmortemDraft ===\n{draft.model_dump_json(indent=2)}\n\n"
-            "Call write_postmortem with the postmortem data. Return document_id JSON."
-        )
+        import httpx
+        from agent import config
 
-        tools, toolset = await get_agent_builder_tools(_WRITE_TOOLS)
-        try:
-            result_text = await _run_agent(
-                self._model, "report_writer_write", _WRITE_INSTRUCTION, tools, prompt
-            )
-        finally:
-            await toolset.close()
+        doc = {
+            "incident_id": draft.incident_id,
+            "title": draft.title,
+            "root_cause": draft.root_cause.primary_cause,
+            "timeline_summary": " ".join([
+                f"{e.timestamp.isoformat()} [{e.service}] {e.message}"
+                for e in (draft.timeline.entries or [])[:5]
+            ]),
+            "services_affected": draft.timeline.services_involved,
+            "severity": draft.severity,
+            "status": "written",
+            "recommendations": draft.recommendations,
+            "created_at": draft.timeline.end_time.isoformat(),
+        }
 
-        doc_id = _parse_write_response(result_text)
-        return doc_id or draft.incident_id
+        url = f"{config.ELASTIC_CLOUD_URL}/postmortems-shipsafe/_doc/{draft.incident_id}"
+        headers = {
+            "Authorization": f"ApiKey {config.ELASTIC_API_KEY}",
+            "Content-Type": "application/json",
+        }
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.put(url, json=doc, headers=headers)
+            resp.raise_for_status()
+
+        return draft.incident_id

@@ -1,7 +1,7 @@
 locals {
   agent_image     = "${var.region}-docker.pkg.dev/${var.project}/voyageblack/agent:${var.image_tag}"
   dashboard_image = "${var.region}-docker.pkg.dev/${var.project}/voyageblack/dashboard:${var.image_tag}"
-  es_mcp_image    = "docker.elastic.co/mcp/elasticsearch"
+  es_mcp_image    = "${var.region}-docker.pkg.dev/${var.project}/voyageblack/es-mcp:latest"
 }
 
 # ─────────────────────────────────────────────
@@ -93,6 +93,18 @@ resource "google_cloud_run_v2_service" "agent" {
       }
       env {
         name  = "GCP_REGION"
+        value = var.region
+      }
+      env {
+        name  = "GOOGLE_GENAI_USE_VERTEXAI"
+        value = "1"
+      }
+      env {
+        name  = "GOOGLE_CLOUD_PROJECT"
+        value = var.project
+      }
+      env {
+        name  = "GOOGLE_CLOUD_LOCATION"
         value = var.region
       }
       # Standalone ES MCP URL — wired to the Cloud Run es-mcp-server service

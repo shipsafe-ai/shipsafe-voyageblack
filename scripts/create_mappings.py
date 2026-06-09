@@ -1,5 +1,9 @@
 """Create Elasticsearch index mappings with semantic_text for ELSER auto-embedding.
 
+On Elastic Serverless, logs-* indices must be data streams (built-in template enforces this).
+We create a component template + index template to define the mapping, then data streams
+are auto-created on first write.
+
 Run ONCE before loading fixtures:
     python scripts/create_mappings.py
 
@@ -16,26 +20,23 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import httpx
 from agent import config
 
-LOGS_INDEX = "logs-hormuz-2026.06.01"
+COMPONENT_TEMPLATE = "voyageblack-logs-mappings"
+INDEX_TEMPLATE = "voyageblack-logs"
 POSTMORTEMS_INDEX = "postmortems-shipsafe"
 
-LOGS_MAPPING = {
-    "mappings": {
-        "properties": {
-            "@timestamp": {"type": "date"},
-            "service": {"type": "keyword"},
-            "level": {"type": "keyword"},
-            "message": {"type": "text", "copy_to": "semantic_content"},
-            "correlation_id": {"type": "keyword"},
-            "error_code": {"type": "keyword"},
-            "duration_ms": {"type": "long"},
-            "event_id": {"type": "keyword"},
-            "semantic_content": {
-                "type": "semantic_text",
-                "inference_id": ".elser-2-elasticsearch",
-            },
-        }
-    }
+LOGS_PROPERTIES = {
+    "@timestamp": {"type": "date"},
+    "service": {"type": "keyword"},
+    "level": {"type": "keyword"},
+    "message": {"type": "text", "copy_to": "semantic_content"},
+    "correlation_id": {"type": "keyword"},
+    "error_code": {"type": "keyword"},
+    "duration_ms": {"type": "long"},
+    "event_id": {"type": "keyword"},
+    "semantic_content": {
+        "type": "semantic_text",
+        "inference_id": ".elser-2-elasticsearch",
+    },
 }
 
 POSTMORTEMS_MAPPING = {
@@ -59,15 +60,43 @@ POSTMORTEMS_MAPPING = {
 }
 
 
-def create_index(client: httpx.Client, index: str, mapping: dict) -> None:
-    url = f"{config.ELASTIC_CLOUD_URL}/{index}"
-    resp = client.put(url, json=mapping)
-    if resp.status_code == 200:
-        print(f"  ✓ Created: {index}")
-    elif resp.status_code == 400 and "resource_already_exists_exception" in resp.text:
-        print(f"  ~ Exists:  {index} (skipped)")
+def put(client: httpx.Client, path: str, body: dict) -> httpx.Response:
+    return client.put(f"{config.ELASTIC_CLOUD_URL}{path}", json=body)
+
+
+def create_component_template(client: httpx.Client) -> None:
+    resp = put(client, f"/_component_template/{COMPONENT_TEMPLATE}", {
+        "template": {"mappings": {"properties": LOGS_PROPERTIES}}
+    })
+    if resp.status_code in (200, 201):
+        print(f"  ✓ Component template: {COMPONENT_TEMPLATE}")
     else:
-        print(f"  ✗ Failed:  {index} ({resp.status_code}): {resp.text[:200]}")
+        print(f"  ✗ Component template failed ({resp.status_code}): {resp.text[:200]}")
+        sys.exit(1)
+
+
+def create_index_template(client: httpx.Client) -> None:
+    resp = put(client, f"/_index_template/{INDEX_TEMPLATE}", {
+        "index_patterns": ["logs-hormuz-*", "logs-generic-*", "logs-auth-*"],
+        "data_stream": {},
+        "composed_of": [COMPONENT_TEMPLATE],
+        "priority": 500,
+    })
+    if resp.status_code in (200, 201):
+        print(f"  ✓ Index template: {INDEX_TEMPLATE} (matches logs-hormuz-*, logs-generic-*, logs-auth-*)")
+    else:
+        print(f"  ✗ Index template failed ({resp.status_code}): {resp.text[:200]}")
+        sys.exit(1)
+
+
+def create_postmortems_index(client: httpx.Client) -> None:
+    resp = put(client, f"/{POSTMORTEMS_INDEX}", POSTMORTEMS_MAPPING)
+    if resp.status_code in (200, 201):
+        print(f"  ✓ Created: {POSTMORTEMS_INDEX}")
+    elif resp.status_code == 400 and "resource_already_exists_exception" in resp.text:
+        print(f"  ~ Exists:  {POSTMORTEMS_INDEX} (skipped)")
+    else:
+        print(f"  ✗ Failed:  {POSTMORTEMS_INDEX} ({resp.status_code}): {resp.text[:200]}")
         sys.exit(1)
 
 
@@ -83,10 +112,12 @@ def main() -> None:
 
     print("Creating Elasticsearch index mappings...")
     with httpx.Client(headers=headers, timeout=30.0) as client:
-        create_index(client, LOGS_INDEX, LOGS_MAPPING)
-        create_index(client, POSTMORTEMS_INDEX, POSTMORTEMS_MAPPING)
+        create_component_template(client)
+        create_index_template(client)
+        create_postmortems_index(client)
 
-    print("\nDone. ELSER will auto-embed semantic_content on first ingest.")
+    print("\nDone. Data streams auto-create on first write via index template.")
+    print("ELSER will auto-embed semantic_content on ingest.")
     print(f"Next: python scripts/load_fixtures.py")
 
 

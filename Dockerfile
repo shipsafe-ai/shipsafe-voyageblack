@@ -12,10 +12,6 @@ WORKDIR /app
 COPY pyproject.toml .
 RUN pip install --no-cache-dir -e .
 
-# Install shipsafe-shared (local build — for Cloud Run use git URL in pyproject.toml)
-COPY ../shipsafe-shared /shipsafe-shared
-RUN pip install --no-cache-dir /shipsafe-shared 2>/dev/null || true
-
 COPY . .
 
 EXPOSE 8080

@@ -147,7 +147,7 @@ COGNITO_OUTAGE_POSTMORTEM = {
 def build_bulk_body(entries: list[dict]) -> str:
     lines = []
     for entry in entries:
-        action = {"index": {"_index": LOGS_INDEX}}
+        action = {"create": {"_index": LOGS_INDEX}}
         doc = {
             "@timestamp": entry["timestamp"],
             "service": entry["service"],
@@ -164,35 +164,9 @@ def build_bulk_body(entries: list[dict]) -> str:
 
 
 def create_index_if_missing(client: httpx.Client, headers: dict) -> None:
-    resp = client.head(f"{config.ELASTIC_CLOUD_URL}/{LOGS_INDEX}")
-    if resp.status_code == 404:
-        mapping = {
-            "mappings": {
-                "properties": {
-                    "@timestamp": {"type": "date"},
-                    "service": {"type": "keyword"},
-                    "level": {"type": "keyword"},
-                    "message": {"type": "text", "copy_to": "semantic_content"},
-                    "correlation_id": {"type": "keyword"},
-                    "error_code": {"type": "keyword"},
-                    "duration_ms": {"type": "long"},
-                    "event_id": {"type": "keyword"},
-                    "semantic_content": {
-                        "type": "semantic_text",
-                        "inference_id": ".elser-2-elasticsearch",
-                    },
-                }
-            }
-        }
-        r = client.put(
-            f"{config.ELASTIC_CLOUD_URL}/{LOGS_INDEX}",
-            json=mapping,
-            headers={**headers, "Content-Type": "application/json"},
-        )
-        if r.status_code not in (200, 201):
-            print(f"  ✗ Index creation failed ({r.status_code}): {r.text[:200]}")
-            sys.exit(1)
-        print(f"  ✓ Created index {LOGS_INDEX}")
+    # LOGS_INDEX matches the voyageblack-logs index template which creates data streams.
+    # Data streams auto-create on first _bulk write — explicit PUT is forbidden and returns 400.
+    print(f"  ~ Data stream {LOGS_INDEX} auto-creates on first write (index template covers logs-*)")
 
 
 def main() -> None:
@@ -205,7 +179,7 @@ def main() -> None:
         "Content-Type": "application/json",
     }
 
-    with httpx.Client(headers=headers, timeout=60.0) as client:
+    with httpx.Client(headers=headers, timeout=300.0) as client:
         # Create index if missing (self-contained — no need to run create_mappings.py first)
         create_index_if_missing(client, headers)
 
@@ -221,7 +195,7 @@ def main() -> None:
             print(f"  ✗ Bulk failed ({resp.status_code}): {resp.text[:300]}")
             sys.exit(1)
         result = resp.json()
-        errors = [i for i in result.get("items", []) if i.get("index", {}).get("error")]
+        errors = [i for i in result.get("items", []) if i.get("create", {}).get("error")]
         if errors:
             print(f"  ✗ {len(errors)} bulk errors: {errors[0]}")
             sys.exit(1)

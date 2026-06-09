@@ -1,7 +1,7 @@
 {
-  "name": "@shipsafe/voyageblack",
+  "name": "shipsafe-voyageblack",
   "version": "0.1.0",
-  "description": "CLI for VoyageBlack — incident postmortem generation powered by Elastic + Gemini",
+  "description": "CLI for VoyageBlack \u2014 incident postmortem generation powered by Elastic + Gemini",
   "type": "module",
   "bin": {
     "voyageblack": "./dist/index.js"

@@ -216,3 +216,27 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+CLAUDE.md
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Terraform
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.backup
+*.tfplan
+
+# Agent runtime
+.agents/
+skills-lock.json
+
+# TypeScript build
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
+# Dashboard build
+.next/
+out/
