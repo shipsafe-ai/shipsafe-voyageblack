@@ -530,6 +530,64 @@ async def demo_seed_generic(dry_run: bool = False) -> dict:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.get("/debug/thinking")
+async def debug_thinking() -> dict:
+    """Test if Vertex AI returns thought parts. Shows raw part attributes."""
+    from agent.runner_utils import run_gemini_direct_with_thinking
+    from google import genai
+    from google.genai import types as genai_types
+
+    model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+    use_vertex = os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in ("1", "true")
+
+    try:
+        if use_vertex:
+            project = os.environ.get("GOOGLE_CLOUD_PROJECT", "shipsafe-ai")
+            location = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
+            client = genai.Client(vertexai=True, project=project, location=location)
+        else:
+            client = genai.Client()
+
+        try:
+            thinking_cfg = genai_types.ThinkingConfig(include_thoughts=True, thinking_budget=4096)
+        except TypeError:
+            thinking_cfg = genai_types.ThinkingConfig(include_thoughts=True)
+
+        response = await client.aio.models.generate_content(
+            model=model,
+            contents="What is 2+2? Think step by step.",
+            config=genai_types.GenerateContentConfig(
+                system_instruction="You are a helpful assistant.",
+                thinking_config=thinking_cfg,
+            ),
+        )
+
+        parts_info = []
+        if response.candidates:
+            for i, part in enumerate(response.candidates[0].content.parts):
+                parts_info.append({
+                    "index": i,
+                    "thought": getattr(part, "thought", "MISSING"),
+                    "text_len": len(getattr(part, "text", "") or ""),
+                    "text_preview": (getattr(part, "text", "") or "")[:100],
+                    "attrs": [a for a in dir(part) if not a.startswith("_") and a not in ("model_fields", "model_config")],
+                })
+
+        text, thinking = await run_gemini_direct_with_thinking(
+            model, "You are helpful.", "What is 2+2? Think step by step."
+        )
+        return {
+            "model": model,
+            "use_vertex": use_vertex,
+            "project": os.environ.get("GOOGLE_CLOUD_PROJECT", "not-set"),
+            "parts": parts_info,
+            "extracted_thinking_len": len(thinking),
+            "extracted_text": text[:200],
+        }
+    except Exception as exc:
+        return {"error": str(exc), "type": type(exc).__name__}
+
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))
