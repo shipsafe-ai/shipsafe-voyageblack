@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import PipelineStream from "@/components/pipeline-stream";
@@ -309,8 +309,43 @@ export default function Home() {
   );
 }
 
+function useTypewriter(target: string | undefined) {
+  const [displayed, setDisplayed] = useState("");
+  const receivedRef = useRef("");
+  const displayedLenRef = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const preRef = useRef<HTMLPreElement>(null);
+
+  useEffect(() => {
+    if (!target) return;
+    receivedRef.current = target;
+    if (timerRef.current) return; // already running
+    timerRef.current = setInterval(() => {
+      const full = receivedRef.current;
+      const cur = displayedLenRef.current;
+      if (cur >= full.length) {
+        clearInterval(timerRef.current!);
+        timerRef.current = null;
+        return;
+      }
+      const next = Math.min(cur + 6, full.length); // ~360 chars/sec at 60fps
+      displayedLenRef.current = next;
+      setDisplayed(full.slice(0, next));
+      if (preRef.current) {
+        preRef.current.scrollTop = preRef.current.scrollHeight;
+      }
+    }, 16);
+    return () => {
+      if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    };
+  }, [target]);
+
+  return { displayed, preRef, done: displayed.length >= (target?.length ?? 0) };
+}
+
 function StageDetail({ stage, ev }: { stage: string; ev: StageEvent }) {
   const [showThinking, setShowThinking] = useState(true);
+  const { displayed: thinkingDisplayed, preRef, done: typingDone } = useTypewriter(ev.thinking);
   const parts: string[] = [];
   if (stage === "TimelineBuilder" && ev.entry_count !== undefined) {
     parts.push(`${ev.entry_count} events`);
@@ -363,10 +398,12 @@ function StageDetail({ stage, ev }: { stage: string; ev: StageEvent }) {
           >
             <span>{showThinking ? "▾" : "▸"}</span>
             <span>Gemini thinking</span>
+            {!typingDone && <span className="inline-block w-1.5 h-1.5 rounded-none bg-accent animate-pulse ml-1" />}
           </button>
-          {showThinking && ev.thinking && (
-            <pre className="mt-1 text-xs font-mono text-text-disabled whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto border border-border-subtle bg-bg-elevated p-2 rounded">
-              {ev.thinking}
+          {showThinking && thinkingDisplayed && (
+            <pre ref={preRef} className="mt-1 text-xs font-mono text-text-disabled whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto border border-border-subtle bg-bg-elevated p-2 rounded">
+              {thinkingDisplayed}
+              {!typingDone && <span className="opacity-70">▊</span>}
             </pre>
           )}
         </div>
