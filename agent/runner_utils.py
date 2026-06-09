@@ -77,18 +77,24 @@ async def run_gemini_direct_with_thinking(
 
     use_vertex = os.environ.get("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in ("1", "true")
     if use_vertex:
-        project = os.environ.get("GOOGLE_CLOUD_PROJECT", os.environ.get("GCLOUD_PROJECT", ""))
+        project = os.environ.get("GOOGLE_CLOUD_PROJECT", os.environ.get("GCLOUD_PROJECT", "shipsafe-ai"))
         location = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1")
         client = genai.Client(vertexai=True, project=project, location=location)
     else:
         client = genai.Client()
+
+    # thinking_budget enables thinking on Vertex AI; include_thoughts returns thought parts
+    try:
+        thinking_cfg = genai_types.ThinkingConfig(include_thoughts=True, thinking_budget=4096)
+    except TypeError:
+        thinking_cfg = genai_types.ThinkingConfig(include_thoughts=True)
 
     response = await client.aio.models.generate_content(
         model=model,
         contents=prompt,
         config=genai_types.GenerateContentConfig(
             system_instruction=system_instruction,
-            thinking_config=genai_types.ThinkingConfig(include_thoughts=True),
+            thinking_config=thinking_cfg,
         ),
     )
 
@@ -97,9 +103,14 @@ async def run_gemini_direct_with_thinking(
 
     if response.candidates:
         for part in response.candidates[0].content.parts:
-            if getattr(part, "thought", False) and getattr(part, "text", ""):
-                thinking_parts.append(part.text)
-            elif getattr(part, "text", ""):
-                result_text = part.text
+            # thought=True marks thinking tokens; check both attribute and dict form
+            is_thought = getattr(part, "thought", None) or (
+                hasattr(part, "__dict__") and part.__dict__.get("thought")
+            )
+            text = getattr(part, "text", "") or ""
+            if is_thought and text:
+                thinking_parts.append(text)
+            elif text:
+                result_text = text
 
     return result_text, "\n\n".join(thinking_parts)

@@ -22,10 +22,8 @@ For each service in the results:
 - Count total errors
 - Collect distinct error_codes
 - Record first_seen timestamp
-- Infer cascade_depth from first_seen ordering: sort services by first_seen ascending,
-  assign 0 to earliest (root trigger), 1 to next, 2 to next, etc.
-  NEVER assign the same cascade_depth to multiple services unless first_seen timestamps are identical.
-  The service with the lowest first_seen timestamp is always cascade_depth 0.
+- Infer cascade_depth: 0 for root trigger, 1 for first downstream, 2 for second, etc.
+  Use temporal ordering — earlier first_seen = lower depth.
 
 Return ONLY this JSON (no prose, no markdown fences):
 {
