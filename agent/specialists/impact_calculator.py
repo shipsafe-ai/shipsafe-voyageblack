@@ -135,6 +135,6 @@ class ImpactCalculator:
             await toolset.close()
 
         blast = _parse_llm_response(result_text)
-        if blast is None:
+        if blast is None or (blast.total_errors == 0 and blast.services_affected == 0 and correlations):
             return _fallback(timeline, correlations)
         return blast

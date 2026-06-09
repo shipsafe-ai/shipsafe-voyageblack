@@ -114,7 +114,9 @@ class ReportWriter:
             await toolset.close()
 
         similar = _parse_similar_incidents(result_text)
-        return similar if similar is not None else []
+        if similar is None:
+            return []
+        return [s for s in similar if s.id != draft.incident_id]
 
     async def write(self, draft: PostmortemDraft) -> str:
         """Write approved postmortem to postmortems-shipsafe.

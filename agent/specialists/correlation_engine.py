@@ -7,11 +7,6 @@ import os
 import re
 from datetime import datetime
 
-from google.adk.agents import Agent
-from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
-from google.genai import types as genai_types
-
 from agent.elastic_mcp import get_agent_builder_tools
 from agent.models import IncidentTimeline, ServiceCorrelation
 
@@ -27,8 +22,10 @@ For each service in the results:
 - Count total errors
 - Collect distinct error_codes
 - Record first_seen timestamp
-- Infer cascade_depth: 0 for root trigger, 1 for first downstream, 2 for second, etc.
-  Use temporal ordering to determine depth — earlier first_seen = lower depth.
+- Infer cascade_depth from first_seen ordering: sort services by first_seen ascending,
+  assign 0 to earliest (root trigger), 1 to next, 2 to next, etc.
+  NEVER assign the same cascade_depth to multiple services unless first_seen timestamps are identical.
+  The service with the lowest first_seen timestamp is always cascade_depth 0.
 
 Return ONLY this JSON (no prose, no markdown fences):
 {
@@ -92,4 +89,12 @@ class CorrelationEngine:
         correlations = _parse_llm_response(result_text)
         if correlations is None:
             return []
-        return sorted(correlations, key=lambda c: c.cascade_depth)
+        correlations = sorted(correlations, key=lambda c: c.cascade_depth)
+        # Enforce unique depths if LLM assigned all 0 — re-rank by first_seen
+        depths = [c.cascade_depth for c in correlations]
+        if len(set(depths)) == 1 and len(correlations) > 1:
+            ordered = sorted(correlations, key=lambda c: (c.first_seen or datetime.max))
+            for i, c in enumerate(ordered):
+                c.cascade_depth = i
+            correlations = ordered
+        return correlations
