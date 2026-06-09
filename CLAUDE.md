@@ -40,11 +40,15 @@ Data seeded:
 - Flywheel end-to-end verified: POST /run → draft → Critic → requires_human_review=true
   POST /approve → writes ES. Second run → similar_incidents returns HORMUZ (score 1.0) + REDSEA (score 0.8)
 
-Pending before submission:
-- Generic fixtures not seeded (POST /demo/seed/generic for AUTH-OUTAGE-2026-0607)
+Verified (June 9):
+- Generic fixtures seeded: POST /demo/seed/generic → 11 docs, AUTH-OUTAGE-2026-0607 ✅
+- Hormuz fixtures: POST /demo/seed → 9 docs ✅
+- Git committed (a7c729f) ✅
+
+Remaining before submission:
 - Dashboard UI — not tested end-to-end in browser
 - CLI (voyageblack demo|connect) — not tested
-- Git commit all changed files
+- SSE stream endpoint (POST /run/stream) — not tested
 
 ## AIS integration (June 9)
 
