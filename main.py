@@ -112,8 +112,12 @@ async def run_stream(
             def emit(stage: str, data: dict) -> str:
                 return f"data: {json.dumps({'stage': stage, **data})}\n\n"
 
+            # Padding flush: forces Envoy/Cloud Run to start streaming immediately
+            yield f": {'x' * 2048}\n\n"
+
             # Stage 1
             yield emit("TimelineBuilder", {"status": "running"})
+            await asyncio.sleep(0)
             tb = TimelineBuilder()
             timeline = await tb.run(
                 incident_id=incident_id, start_time=start_dt, end_time=end_dt
@@ -128,6 +132,7 @@ async def run_stream(
 
             # Stage 2
             yield emit("CorrelationEngine", {"status": "running"})
+            await asyncio.sleep(0)
             ce = CorrelationEngine()
             correlations = await ce.run(timeline=timeline)
             if ce.thinking_text:
@@ -140,6 +145,7 @@ async def run_stream(
 
             # Stage 3
             yield emit("ImpactCalculator", {"status": "running"})
+            await asyncio.sleep(0)
             ic = ImpactCalculator()
             blast = await ic.run(timeline=timeline, correlations=correlations)
             if ic.thinking_text:
@@ -153,6 +159,7 @@ async def run_stream(
 
             # Stage 4
             yield emit("RootCauseAnalyzer", {"status": "running"})
+            await asyncio.sleep(0)
             rca = RootCauseAnalyzer()
             root_cause = await rca.run(
                 timeline=timeline, correlations=correlations, blast_radius=blast
@@ -174,6 +181,7 @@ async def run_stream(
                 root_cause=root_cause,
             )
             yield emit("ReportWriter", {"status": "running"})
+            await asyncio.sleep(0)
             writer = ReportWriter()
             similar = await writer.find_similar(draft=draft)
             draft.similar_incidents = similar
@@ -187,6 +195,7 @@ async def run_stream(
 
             # Stage 6
             yield emit("Critic", {"status": "running"})
+            await asyncio.sleep(0)
             critic = Critic()
             verdict = await critic.review(draft)
             draft.status = "draft"

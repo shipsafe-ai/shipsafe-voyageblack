@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import { useRouter } from "next/navigation";
 import PipelineStream from "@/components/pipeline-stream";
 
@@ -117,30 +118,30 @@ export default function Home() {
           }
 
           if (ev.stage === "__error__") {
-            setError(ev.error ?? "Unknown error");
+            flushSync(() => setError(ev.error ?? "Unknown error"));
           } else if (ev.stage === "__result__") {
             const id = (ev.result as { draft?: { incident_id?: string } })?.draft?.incident_id;
             if (id) {
               sessionStorage.setItem(`voyageblack:result:${id}`, JSON.stringify(ev.result));
-              setResultId(id);
+              flushSync(() => setResultId(id));
               setTimeout(() => router.push(`/postmortem/${id}`), 800);
             }
           } else if (ev.status === "running") {
-            setStages(prev => ({
+            flushSync(() => setStages(prev => ({
               ...prev,
               [ev.stage]: { stage: ev.stage, status: "running" },
-            }));
+            })));
           } else if (ev.status === "thinking" && ev.thinking) {
             thinkingRef.current[ev.stage] = ev.thinking;
-            setStages(prev => ({
+            flushSync(() => setStages(prev => ({
               ...prev,
               [ev.stage]: { ...prev[ev.stage], stage: ev.stage, status: "thinking", thinking: ev.thinking },
-            }));
+            })));
           } else {
-            setStages(prev => ({
+            flushSync(() => setStages(prev => ({
               ...prev,
               [ev.stage]: { ...ev, thinking: thinkingRef.current[ev.stage] },
-            }));
+            })));
           }
         }
       }
