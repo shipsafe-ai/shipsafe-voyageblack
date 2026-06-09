@@ -125,8 +125,17 @@ export default function Home() {
               setResultId(id);
               setTimeout(() => router.push(`/postmortem/${id}`), 800);
             }
+          } else if (ev.status === "running") {
+            setStages(prev => ({
+              ...prev,
+              [ev.stage]: { stage: ev.stage, status: "running" },
+            }));
           } else if (ev.status === "thinking" && ev.thinking) {
             thinkingRef.current[ev.stage] = ev.thinking;
+            setStages(prev => ({
+              ...prev,
+              [ev.stage]: { ...prev[ev.stage], stage: ev.stage, status: "thinking", thinking: ev.thinking },
+            }));
           } else {
             setStages(prev => ({
               ...prev,
@@ -234,15 +243,18 @@ export default function Home() {
           <div className="space-y-3">
             {STAGE_ORDER.map((stage, i) => {
               const ev = stages[stage];
-              const active = running && i === completedCount;
-              const done = !!ev;
+              const done = ev?.status === "done";
+              const isThinking = ev?.status === "thinking";
+              const isRunning = ev?.status === "running";
+              const active = done || isThinking || isRunning;
+              const labelColor = done ? "text-text-primary" : (isThinking || isRunning) ? "text-accent" : "text-text-disabled";
               return (
                 <div key={stage} className="flex items-start gap-4">
                   {/* Status indicator */}
                   <div className="mt-1 w-4 flex-shrink-0 flex items-center justify-center">
                     {done ? (
                       <span className="text-signal-approve text-xs">✓</span>
-                    ) : active ? (
+                    ) : (isThinking || isRunning) ? (
                       <span className="inline-block w-2 h-2 rounded-none bg-accent animate-pulse" />
                     ) : (
                       <span className="w-2 h-2 rounded-none border border-border-strong" />
@@ -251,7 +263,7 @@ export default function Home() {
                   {/* Stage info */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3">
-                      <span className={`text-sm font-mono ${done ? "text-text-primary" : active ? "text-accent" : "text-text-disabled"}`}>
+                      <span className={`text-sm font-mono ${labelColor}`}>
                         {STAGE_LABELS[stage]}
                       </span>
                       {stage === "ImpactCalculator" && (
@@ -265,7 +277,7 @@ export default function Home() {
                         </span>
                       )}
                     </div>
-                    {done && <StageDetail stage={stage} ev={ev} />}
+                    {active && ev && <StageDetail stage={stage} ev={ev} />}
                   </div>
                 </div>
               );
@@ -284,7 +296,7 @@ export default function Home() {
 }
 
 function StageDetail({ stage, ev }: { stage: string; ev: StageEvent }) {
-  const [showThinking, setShowThinking] = useState(false);
+  const [showThinking, setShowThinking] = useState(true);
   const parts: string[] = [];
   if (stage === "TimelineBuilder" && ev.entry_count !== undefined) {
     parts.push(`${ev.entry_count} events`);
@@ -313,6 +325,9 @@ function StageDetail({ stage, ev }: { stage: string; ev: StageEvent }) {
     if (ev.approved !== undefined) parts.push(ev.approved ? "approved" : "human review required");
   }
 
+  const isRunning = ev.status === "running";
+  const isThinking = ev.status === "thinking";
+
   return (
     <div className="mt-1 space-y-1">
       {parts.length > 0 && (
@@ -320,7 +335,13 @@ function StageDetail({ stage, ev }: { stage: string; ev: StageEvent }) {
           {parts.join(" · ")}
         </div>
       )}
-      {ev.thinking && (
+      {(isRunning || isThinking) && !ev.thinking && (
+        <div className="text-xs font-mono text-text-disabled flex items-center gap-1">
+          <span className="inline-block w-1.5 h-1.5 rounded-none bg-accent animate-pulse" />
+          <span>Gemini is thinking…</span>
+        </div>
+      )}
+      {(ev.thinking || isThinking) && (
         <div>
           <button
             onClick={() => setShowThinking(v => !v)}
@@ -329,7 +350,7 @@ function StageDetail({ stage, ev }: { stage: string; ev: StageEvent }) {
             <span>{showThinking ? "▾" : "▸"}</span>
             <span>Gemini thinking</span>
           </button>
-          {showThinking && (
+          {showThinking && ev.thinking && (
             <pre className="mt-1 text-xs font-mono text-text-disabled whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto border border-border-subtle bg-bg-elevated p-2 rounded">
               {ev.thinking}
             </pre>

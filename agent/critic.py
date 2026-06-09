@@ -122,15 +122,28 @@ def _parse_llm_response(text: str) -> CriticVerdict | None:
     text = text.strip()
     if not text:
         return None
-    if text.startswith("```"):
-        text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-    try:
-        return CriticVerdict.model_validate_json(text)
-    except Exception:
+    # strip code fences regardless of start position
+    if "```" in text:
+        # extract content between first ``` and last ```
+        inside = text.split("```", 1)[1]  # after first ```
+        inside = inside.split("```", 1)[0]  # before closing ```
+        # strip optional language tag on first line
+        if "\n" in inside:
+            inside = inside.split("\n", 1)[1]
+        text = inside.strip()
+    # try full text, then any JSON object found inside
+    for candidate in [text, *re.findall(r"\{[\s\S]*?\}", text, re.DOTALL)]:
+        candidate = candidate.strip()
+        if not candidate:
+            continue
         try:
-            return CriticVerdict(**json.loads(text))
+            return CriticVerdict.model_validate_json(candidate)
         except Exception:
-            return None
+            try:
+                return CriticVerdict(**json.loads(candidate))
+            except Exception:
+                continue
+    return None
 
 
 def _safe_reject(reason: str) -> CriticVerdict:

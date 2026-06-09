@@ -113,6 +113,7 @@ async def run_stream(
                 return f"data: {json.dumps({'stage': stage, **data})}\n\n"
 
             # Stage 1
+            yield emit("TimelineBuilder", {"status": "running"})
             tb = TimelineBuilder()
             timeline = await tb.run(
                 incident_id=incident_id, start_time=start_dt, end_time=end_dt
@@ -126,6 +127,7 @@ async def run_stream(
             })
 
             # Stage 2
+            yield emit("CorrelationEngine", {"status": "running"})
             ce = CorrelationEngine()
             correlations = await ce.run(timeline=timeline)
             if ce.thinking_text:
@@ -137,6 +139,7 @@ async def run_stream(
             })
 
             # Stage 3
+            yield emit("ImpactCalculator", {"status": "running"})
             ic = ImpactCalculator()
             blast = await ic.run(timeline=timeline, correlations=correlations)
             if ic.thinking_text:
@@ -149,6 +152,7 @@ async def run_stream(
             })
 
             # Stage 4
+            yield emit("RootCauseAnalyzer", {"status": "running"})
             rca = RootCauseAnalyzer()
             root_cause = await rca.run(
                 timeline=timeline, correlations=correlations, blast_radius=blast
@@ -169,6 +173,7 @@ async def run_stream(
                 blast_radius=blast,
                 root_cause=root_cause,
             )
+            yield emit("ReportWriter", {"status": "running"})
             writer = ReportWriter()
             similar = await writer.find_similar(draft=draft)
             draft.similar_incidents = similar
@@ -181,6 +186,7 @@ async def run_stream(
             })
 
             # Stage 6
+            yield emit("Critic", {"status": "running"})
             critic = Critic()
             verdict = await critic.review(draft)
             draft.status = "draft"
