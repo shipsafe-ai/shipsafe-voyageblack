@@ -113,9 +113,12 @@ async def run_stream(
                 return f"data: {json.dumps({'stage': stage, **data})}\n\n"
 
             # Stage 1
-            timeline = await TimelineBuilder().run(
+            tb = TimelineBuilder()
+            timeline = await tb.run(
                 incident_id=incident_id, start_time=start_dt, end_time=end_dt
             )
+            if tb.thinking_text:
+                yield emit("TimelineBuilder", {"status": "thinking", "thinking": tb.thinking_text})
             yield emit("TimelineBuilder", {
                 "status": "done",
                 "entry_count": len(timeline.entries),
@@ -123,7 +126,10 @@ async def run_stream(
             })
 
             # Stage 2
-            correlations = await CorrelationEngine().run(timeline=timeline)
+            ce = CorrelationEngine()
+            correlations = await ce.run(timeline=timeline)
+            if ce.thinking_text:
+                yield emit("CorrelationEngine", {"status": "thinking", "thinking": ce.thinking_text})
             yield emit("CorrelationEngine", {
                 "status": "done",
                 "service_count": len(correlations),
@@ -131,7 +137,10 @@ async def run_stream(
             })
 
             # Stage 3
-            blast = await ImpactCalculator().run(timeline=timeline, correlations=correlations)
+            ic = ImpactCalculator()
+            blast = await ic.run(timeline=timeline, correlations=correlations)
+            if ic.thinking_text:
+                yield emit("ImpactCalculator", {"status": "thinking", "thinking": ic.thinking_text})
             yield emit("ImpactCalculator", {
                 "status": "done",
                 "total_errors": blast.total_errors,
@@ -140,9 +149,12 @@ async def run_stream(
             })
 
             # Stage 4
-            root_cause = await RootCauseAnalyzer().run(
+            rca = RootCauseAnalyzer()
+            root_cause = await rca.run(
                 timeline=timeline, correlations=correlations, blast_radius=blast
             )
+            if rca.thinking_text:
+                yield emit("RootCauseAnalyzer", {"status": "thinking", "thinking": rca.thinking_text})
             yield emit("RootCauseAnalyzer", {
                 "status": "done",
                 "confidence": root_cause.confidence,
@@ -160,6 +172,8 @@ async def run_stream(
             writer = ReportWriter()
             similar = await writer.find_similar(draft=draft)
             draft.similar_incidents = similar
+            if writer.thinking_text:
+                yield emit("ReportWriter", {"status": "thinking", "thinking": writer.thinking_text})
             yield emit("ReportWriter", {
                 "status": "done",
                 "similar_count": len(similar),
@@ -167,8 +181,11 @@ async def run_stream(
             })
 
             # Stage 6
-            verdict = await Critic().review(draft)
+            critic = Critic()
+            verdict = await critic.review(draft)
             draft.status = "draft"
+            if critic.thinking_text:
+                yield emit("Critic", {"status": "thinking", "thinking": critic.thinking_text})
             yield emit("Critic", {
                 "status": "done",
                 "approved": verdict.approved,

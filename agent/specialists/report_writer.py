@@ -6,11 +6,6 @@ import json
 import os
 import re
 
-from google.adk.agents import Agent
-from google.adk.runners import Runner
-from google.adk.sessions import InMemorySessionService
-from google.genai import types as genai_types
-
 from agent.elastic_mcp import get_agent_builder_tools
 from agent.models import PostmortemDraft, SimilarIncident
 
@@ -84,32 +79,6 @@ def _parse_write_response(text: str) -> str | None:
     return None
 
 
-async def _run_agent(model: str, name: str, instruction: str, tools: list, prompt: str) -> str:
-    agent = Agent(model=model, name=name, instruction=instruction, tools=tools)
-    session_service = InMemorySessionService()
-    session = await session_service.create_session(app_name="voyageblack", user_id="system")
-    runner = Runner(agent=agent, app_name="voyageblack", session_service=session_service)
-
-    result_text = ""
-    _json_fallback = ""
-    async for event in runner.run_async(
-        user_id="system",
-        session_id=session.id,
-        new_message=genai_types.Content(
-            role="user",
-            parts=[genai_types.Part(text=prompt)],
-        ),
-    ):
-        if event.content and event.content.parts:
-            for part in event.content.parts:
-                if hasattr(part, "text") and part.text:
-                    if event.is_final_response():
-                        result_text = part.text
-                    elif "{" in part.text:
-                        _json_fallback = part.text
-    return result_text or _json_fallback
-
-
 class ReportWriter:
     """Searches postmortems index for similar incidents and writes approved postmortems.
 
@@ -120,6 +89,7 @@ class ReportWriter:
 
     def __init__(self) -> None:
         self._model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+        self.thinking_text: str = ""
 
     async def find_similar(self, draft: PostmortemDraft) -> list[SimilarIncident]:
         """Search postmortems-shipsafe for semantically similar past incidents."""
@@ -134,9 +104,10 @@ class ReportWriter:
             "Call similar_past_incident. Return similar_incidents JSON."
         )
 
+        from agent.runner_utils import run_agent_with_thinking
         tools, toolset = await get_agent_builder_tools(_SIMILAR_TOOLS)
         try:
-            result_text = await _run_agent(
+            result_text, self.thinking_text = await run_agent_with_thinking(
                 self._model, "report_writer_find", _FIND_INSTRUCTION, tools, prompt
             )
         finally:

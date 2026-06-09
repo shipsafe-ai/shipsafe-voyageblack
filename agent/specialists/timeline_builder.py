@@ -88,6 +88,7 @@ class TimelineBuilder:
 
     def __init__(self) -> None:
         self._model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
+        self.thinking_text: str = ""
 
     async def run(
         self,
@@ -104,43 +105,12 @@ class TimelineBuilder:
             "Return IncidentTimeline JSON."
         )
 
+        from agent.runner_utils import run_agent_with_thinking
         tools, toolset = await get_agent_builder_tools(_TOOLS)
         try:
-            agent = Agent(
-                model=self._model,
-                name="timeline_builder",
-                instruction=_INSTRUCTION,
-                tools=tools,
+            result_text, self.thinking_text = await run_agent_with_thinking(
+                self._model, "timeline_builder", _INSTRUCTION, tools, prompt
             )
-            session_service = InMemorySessionService()
-            session = await session_service.create_session(
-                app_name="voyageblack", user_id="system"
-            )
-            runner = Runner(
-                agent=agent,
-                app_name="voyageblack",
-                session_service=session_service,
-            )
-
-            result_text = ""
-            _json_fallback = ""
-            async for event in runner.run_async(
-                user_id="system",
-                session_id=session.id,
-                new_message=genai_types.Content(
-                    role="user",
-                    parts=[genai_types.Part(text=prompt)],
-                ),
-            ):
-                if event.content and event.content.parts:
-                    for part in event.content.parts:
-                        if hasattr(part, "text") and part.text:
-                            if event.is_final_response():
-                                result_text = part.text
-                            elif "{" in part.text:
-                                _json_fallback = part.text
-            if not result_text:
-                result_text = _json_fallback
         finally:
             await toolset.close()
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import PipelineStream from "@/components/pipeline-stream";
 
@@ -35,6 +35,7 @@ type StageEvent = {
   approved?: boolean;
   injection_detected?: boolean;
   risk_level?: string;
+  thinking?: string;
   result?: Record<string, unknown>;
   error?: string;
 };
@@ -64,6 +65,7 @@ export default function Home() {
   const [endTime, setEndTime] = useState(HORMUZ_PRESET.end_time);
   const [running, setRunning] = useState(false);
   const [stages, setStages] = useState<Record<string, StageEvent>>({});
+  const thinkingRef = useRef<Record<string, string>>({});
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [resultId, setResultId] = useState<string | null>(null);
@@ -71,6 +73,7 @@ export default function Home() {
   async function handleRun() {
     setRunning(true);
     setStages({});
+    thinkingRef.current = {};
     setError(null);
     setResultId(null);
     setElapsed(0);
@@ -93,15 +96,25 @@ export default function Home() {
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
+      let buffer = "";
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        const text = decoder.decode(value, { stream: true });
-        for (const line of text.split("\n")) {
+        buffer += decoder.decode(value, { stream: true });
+        const events = buffer.split("\n\n");
+        buffer = events.pop() ?? "";
+
+        for (const event of events) {
+          const line = event.trim();
           if (!line.startsWith("data: ")) continue;
-          const ev: StageEvent = JSON.parse(line.slice(6));
+          let ev: StageEvent;
+          try {
+            ev = JSON.parse(line.slice(6));
+          } catch {
+            continue;
+          }
 
           if (ev.stage === "__error__") {
             setError(ev.error ?? "Unknown error");
@@ -112,8 +125,13 @@ export default function Home() {
               setResultId(id);
               setTimeout(() => router.push(`/postmortem/${id}`), 800);
             }
+          } else if (ev.status === "thinking" && ev.thinking) {
+            thinkingRef.current[ev.stage] = ev.thinking;
           } else {
-            setStages(prev => ({ ...prev, [ev.stage]: ev }));
+            setStages(prev => ({
+              ...prev,
+              [ev.stage]: { ...ev, thinking: thinkingRef.current[ev.stage] },
+            }));
           }
         }
       }
@@ -125,7 +143,7 @@ export default function Home() {
     }
   }
 
-  const completedCount = Object.keys(stages).length;
+  const completedCount = Object.values(stages).filter(e => e.status === "done").length;
 
   return (
     <div className="space-y-8">
@@ -266,6 +284,7 @@ export default function Home() {
 }
 
 function StageDetail({ stage, ev }: { stage: string; ev: StageEvent }) {
+  const [showThinking, setShowThinking] = useState(false);
   const parts: string[] = [];
   if (stage === "TimelineBuilder" && ev.entry_count !== undefined) {
     parts.push(`${ev.entry_count} events`);
@@ -294,10 +313,29 @@ function StageDetail({ stage, ev }: { stage: string; ev: StageEvent }) {
     if (ev.approved !== undefined) parts.push(ev.approved ? "approved" : "human review required");
   }
 
-  if (!parts.length) return null;
   return (
-    <div className="mt-1 text-xs font-mono text-text-tertiary truncate">
-      {parts.join(" · ")}
+    <div className="mt-1 space-y-1">
+      {parts.length > 0 && (
+        <div className="text-xs font-mono text-text-tertiary truncate">
+          {parts.join(" · ")}
+        </div>
+      )}
+      {ev.thinking && (
+        <div>
+          <button
+            onClick={() => setShowThinking(v => !v)}
+            className="text-xs font-mono text-text-disabled hover:text-text-tertiary transition-colors flex items-center gap-1"
+          >
+            <span>{showThinking ? "▾" : "▸"}</span>
+            <span>Gemini thinking</span>
+          </button>
+          {showThinking && (
+            <pre className="mt-1 text-xs font-mono text-text-disabled whitespace-pre-wrap leading-relaxed max-h-48 overflow-y-auto border border-border-subtle bg-bg-elevated p-2 rounded">
+              {ev.thinking}
+            </pre>
+          )}
+        </div>
+      )}
     </div>
   );
 }
