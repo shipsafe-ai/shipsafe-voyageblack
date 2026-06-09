@@ -18,6 +18,16 @@ You are ReportWriter (find mode), postmortem researcher for VoyageBlack.
 Call similar_past_incident with the incident description to search the postmortems-shipsafe
 Elasticsearch index using ELSER semantic similarity.
 
+The tool returns Elasticsearch documents. For each result:
+- id: use the incident_id field (or _id if incident_id absent)
+- title: use the title field
+- similarity_score: use the _score field normalized to 0.0-1.0 range
+  (ELSER scores are typically 5-25; divide by 25 and clamp to 1.0).
+  If _score is not available, estimate based on result ranking (first=0.9, second=0.7, third=0.5).
+  NEVER return 0.0 for results that were actually returned by the tool.
+- root_cause: use the root_cause field
+- resolution: summarize recommendations field if present, else empty string
+
 Return ONLY this JSON (no prose, no markdown fences):
 {
   "similar_incidents": [
@@ -116,7 +126,8 @@ class ReportWriter:
         similar = _parse_similar_incidents(result_text)
         if similar is None:
             return []
-        return [s for s in similar if s.id != draft.incident_id]
+        current_id = draft.incident_id.strip().upper()
+        return [s for s in similar if s.id.strip().upper() != current_id]
 
     async def write(self, draft: PostmortemDraft) -> str:
         """Write approved postmortem to postmortems-shipsafe.
