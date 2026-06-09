@@ -67,7 +67,7 @@ class CorrelationEngine:
         self._model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
         self.thinking_text: str = ""
 
-    async def run(self, timeline: IncidentTimeline) -> list[ServiceCorrelation]:
+    async def run(self, timeline: IncidentTimeline, thinking_queue=None) -> list[ServiceCorrelation]:
         prompt = (
             f"Find service error correlation for incident {timeline.correlation_id}.\n"
             f"Time window: {timeline.start_time.isoformat()} → {timeline.end_time.isoformat()}\n"
@@ -79,7 +79,8 @@ class CorrelationEngine:
         tools, toolset = await get_agent_builder_tools(_TOOLS)
         try:
             result_text, self.thinking_text = await run_agent_with_thinking(
-                self._model, "correlation_engine", _INSTRUCTION, tools, prompt
+                self._model, "correlation_engine", _INSTRUCTION, tools, prompt,
+                thinking_queue=thinking_queue,
             )
         finally:
             await toolset.close()

@@ -78,6 +78,7 @@ class RootCauseAnalyzer:
         timeline: IncidentTimeline,
         correlations: list[ServiceCorrelation],
         blast_radius: BlastRadius,
+        thinking_queue=None,
     ) -> RootCauseHypothesis:
         # Pass structured data only — no raw log messages concatenated
         structured_input = {
@@ -111,9 +112,12 @@ class RootCauseAnalyzer:
         try:
             from agent.runner_utils import run_gemini_direct_with_thinking
             result_text, self.thinking_text = await run_gemini_direct_with_thinking(
-                self._model, _INSTRUCTION, prompt
+                self._model, _INSTRUCTION, prompt,
+                thinking_queue=thinking_queue,
             )
         except Exception:
+            if thinking_queue is not None:
+                await thinking_queue.put(None)  # ensure sentinel on error
             return _fallback(timeline, correlations)
 
         hypothesis = _parse_llm_response(result_text)

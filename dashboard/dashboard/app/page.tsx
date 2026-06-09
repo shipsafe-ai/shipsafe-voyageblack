@@ -131,7 +131,20 @@ export default function Home() {
               ...prev,
               [ev.stage]: { stage: ev.stage, status: "running" },
             })));
+          } else if (ev.status === "thinking_chunk" && ev.thinking) {
+            // Accumulate streaming thinking chunks in real-time
+            thinkingRef.current[ev.stage] = (thinkingRef.current[ev.stage] ?? "") + ev.thinking;
+            flushSync(() => setStages(prev => ({
+              ...prev,
+              [ev.stage]: {
+                ...prev[ev.stage],
+                stage: ev.stage,
+                status: "thinking",
+                thinking: thinkingRef.current[ev.stage],
+              },
+            })));
           } else if (ev.status === "thinking" && ev.thinking) {
+            // Fallback: full thinking text in one shot
             thinkingRef.current[ev.stage] = ev.thinking;
             flushSync(() => setStages(prev => ({
               ...prev,

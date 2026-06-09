@@ -167,7 +167,7 @@ class Critic:
         self._model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
         self.thinking_text: str = ""
 
-    async def review(self, draft: PostmortemDraft) -> CriticVerdict:
+    async def review(self, draft: PostmortemDraft, thinking_queue=None) -> CriticVerdict:
         # Layer 1: static scan
         static_detected, static_fields, static_snippets = scan_for_injection(draft)
 
@@ -197,9 +197,12 @@ class Critic:
         try:
             from agent.runner_utils import run_agent_with_thinking
             result_text, self.thinking_text = await run_agent_with_thinking(
-                self._model, "critic", _INSTRUCTION, [], prompt
+                self._model, "critic", _INSTRUCTION, [], prompt,
+                thinking_queue=thinking_queue,
             )
         except Exception as exc:
+            if thinking_queue is not None:
+                await thinking_queue.put(None)
             return _safe_reject(f"LLM review failed: {exc}")
 
         verdict = _parse_llm_response(result_text)

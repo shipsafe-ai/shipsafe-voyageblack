@@ -118,12 +118,18 @@ async def run_stream(
             # Stage 1
             yield emit("TimelineBuilder", {"status": "running"})
             await asyncio.sleep(0)
+            q1: asyncio.Queue = asyncio.Queue()
             tb = TimelineBuilder()
-            timeline = await tb.run(
-                incident_id=incident_id, start_time=start_dt, end_time=end_dt
-            )
-            if tb.thinking_text:
-                yield emit("TimelineBuilder", {"status": "thinking", "thinking": tb.thinking_text})
+            task1 = asyncio.create_task(tb.run(
+                incident_id=incident_id, start_time=start_dt, end_time=end_dt,
+                thinking_queue=q1,
+            ))
+            while True:
+                chunk = await q1.get()
+                if chunk is None:
+                    break
+                yield emit("TimelineBuilder", {"status": "thinking_chunk", "thinking": chunk})
+            timeline = await task1
             yield emit("TimelineBuilder", {
                 "status": "done",
                 "entry_count": len(timeline.entries),
@@ -133,10 +139,15 @@ async def run_stream(
             # Stage 2
             yield emit("CorrelationEngine", {"status": "running"})
             await asyncio.sleep(0)
+            q2: asyncio.Queue = asyncio.Queue()
             ce = CorrelationEngine()
-            correlations = await ce.run(timeline=timeline)
-            if ce.thinking_text:
-                yield emit("CorrelationEngine", {"status": "thinking", "thinking": ce.thinking_text})
+            task2 = asyncio.create_task(ce.run(timeline=timeline, thinking_queue=q2))
+            while True:
+                chunk = await q2.get()
+                if chunk is None:
+                    break
+                yield emit("CorrelationEngine", {"status": "thinking_chunk", "thinking": chunk})
+            correlations = await task2
             yield emit("CorrelationEngine", {
                 "status": "done",
                 "service_count": len(correlations),
@@ -146,10 +157,17 @@ async def run_stream(
             # Stage 3
             yield emit("ImpactCalculator", {"status": "running"})
             await asyncio.sleep(0)
+            q3: asyncio.Queue = asyncio.Queue()
             ic = ImpactCalculator()
-            blast = await ic.run(timeline=timeline, correlations=correlations)
-            if ic.thinking_text:
-                yield emit("ImpactCalculator", {"status": "thinking", "thinking": ic.thinking_text})
+            task3 = asyncio.create_task(ic.run(
+                timeline=timeline, correlations=correlations, thinking_queue=q3,
+            ))
+            while True:
+                chunk = await q3.get()
+                if chunk is None:
+                    break
+                yield emit("ImpactCalculator", {"status": "thinking_chunk", "thinking": chunk})
+            blast = await task3
             yield emit("ImpactCalculator", {
                 "status": "done",
                 "total_errors": blast.total_errors,
@@ -160,12 +178,18 @@ async def run_stream(
             # Stage 4
             yield emit("RootCauseAnalyzer", {"status": "running"})
             await asyncio.sleep(0)
+            q4: asyncio.Queue = asyncio.Queue()
             rca = RootCauseAnalyzer()
-            root_cause = await rca.run(
-                timeline=timeline, correlations=correlations, blast_radius=blast
-            )
-            if rca.thinking_text:
-                yield emit("RootCauseAnalyzer", {"status": "thinking", "thinking": rca.thinking_text})
+            task4 = asyncio.create_task(rca.run(
+                timeline=timeline, correlations=correlations, blast_radius=blast,
+                thinking_queue=q4,
+            ))
+            while True:
+                chunk = await q4.get()
+                if chunk is None:
+                    break
+                yield emit("RootCauseAnalyzer", {"status": "thinking_chunk", "thinking": chunk})
+            root_cause = await task4
             yield emit("RootCauseAnalyzer", {
                 "status": "done",
                 "confidence": root_cause.confidence,
@@ -182,11 +206,16 @@ async def run_stream(
             )
             yield emit("ReportWriter", {"status": "running"})
             await asyncio.sleep(0)
+            q5: asyncio.Queue = asyncio.Queue()
             writer = ReportWriter()
-            similar = await writer.find_similar(draft=draft)
+            task5 = asyncio.create_task(writer.find_similar(draft=draft, thinking_queue=q5))
+            while True:
+                chunk = await q5.get()
+                if chunk is None:
+                    break
+                yield emit("ReportWriter", {"status": "thinking_chunk", "thinking": chunk})
+            similar = await task5
             draft.similar_incidents = similar
-            if writer.thinking_text:
-                yield emit("ReportWriter", {"status": "thinking", "thinking": writer.thinking_text})
             yield emit("ReportWriter", {
                 "status": "done",
                 "similar_count": len(similar),
@@ -196,11 +225,16 @@ async def run_stream(
             # Stage 6
             yield emit("Critic", {"status": "running"})
             await asyncio.sleep(0)
+            q6: asyncio.Queue = asyncio.Queue()
             critic = Critic()
-            verdict = await critic.review(draft)
+            task6 = asyncio.create_task(critic.review(draft, thinking_queue=q6))
+            while True:
+                chunk = await q6.get()
+                if chunk is None:
+                    break
+                yield emit("Critic", {"status": "thinking_chunk", "thinking": chunk})
+            verdict = await task6
             draft.status = "draft"
-            if critic.thinking_text:
-                yield emit("Critic", {"status": "thinking", "thinking": critic.thinking_text})
             yield emit("Critic", {
                 "status": "done",
                 "approved": verdict.approved,

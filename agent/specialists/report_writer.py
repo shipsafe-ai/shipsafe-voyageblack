@@ -101,7 +101,7 @@ class ReportWriter:
         self._model = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
         self.thinking_text: str = ""
 
-    async def find_similar(self, draft: PostmortemDraft) -> list[SimilarIncident]:
+    async def find_similar(self, draft: PostmortemDraft, thinking_queue=None) -> list[SimilarIncident]:
         """Search postmortems-shipsafe for semantically similar past incidents."""
         query = (
             f"{draft.root_cause.primary_cause} "
@@ -118,7 +118,8 @@ class ReportWriter:
         tools, toolset = await get_agent_builder_tools(_SIMILAR_TOOLS)
         try:
             result_text, self.thinking_text = await run_agent_with_thinking(
-                self._model, "report_writer_find", _FIND_INSTRUCTION, tools, prompt
+                self._model, "report_writer_find", _FIND_INSTRUCTION, tools, prompt,
+                thinking_queue=thinking_queue,
             )
         finally:
             await toolset.close()

@@ -95,6 +95,7 @@ class TimelineBuilder:
         incident_id: str,
         start_time: datetime,
         end_time: datetime,
+        thinking_queue=None,
     ) -> IncidentTimeline:
         prompt = (
             f"Build incident timeline.\n"
@@ -109,7 +110,8 @@ class TimelineBuilder:
         tools, toolset = await get_agent_builder_tools(_TOOLS)
         try:
             result_text, self.thinking_text = await run_agent_with_thinking(
-                self._model, "timeline_builder", _INSTRUCTION, tools, prompt
+                self._model, "timeline_builder", _INSTRUCTION, tools, prompt,
+                thinking_queue=thinking_queue,
             )
         finally:
             await toolset.close()

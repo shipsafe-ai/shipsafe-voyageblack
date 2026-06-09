@@ -110,6 +110,7 @@ class ImpactCalculator:
         self,
         timeline: IncidentTimeline,
         correlations: list[ServiceCorrelation],
+        thinking_queue=None,
     ) -> BlastRadius:
         duration_min = (timeline.end_time - timeline.start_time).total_seconds() / 60.0
         prompt = (
@@ -129,7 +130,8 @@ class ImpactCalculator:
         tools, toolset = await get_elasticsearch_tools(_TOOLS)
         try:
             result_text, self.thinking_text = await run_agent_with_thinking(
-                self._model, "impact_calculator", instruction, tools, prompt
+                self._model, "impact_calculator", instruction, tools, prompt,
+                thinking_queue=thinking_queue,
             )
         finally:
             await toolset.close()
