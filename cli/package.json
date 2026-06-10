@@ -1,6 +1,6 @@
 {
   "name": "shipsafe-voyageblack",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "CLI for VoyageBlack \u2014 incident postmortem generation powered by Elastic + Gemini",
   "type": "module",
   "bin": {
@@ -8,7 +8,8 @@
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch"
+    "dev": "tsc --watch",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "commander": "^12.0.0"
@@ -16,5 +17,8 @@
   "devDependencies": {
     "@types/node": "^20",
     "typescript": "^5"
-  }
+  },
+  "files": [
+    "dist"
+  ]
 }
