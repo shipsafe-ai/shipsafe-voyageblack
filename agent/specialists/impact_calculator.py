@@ -82,12 +82,25 @@ def _parse_llm_response(text: str) -> BlastRadius | None:
 
 
 def _fallback(timeline: IncidentTimeline, correlations: list[ServiceCorrelation]) -> BlastRadius:
-    total = sum(c.error_count for c in correlations)
+    import logging
+    logging.getLogger(__name__).warning("ImpactCalculator: MCP failed or zero result — using fallback")
     duration = (timeline.end_time - timeline.start_time).total_seconds() / 60.0
-    chain = [c.service for c in sorted(correlations, key=lambda c: c.cascade_depth)]
+    if correlations:
+        total = sum(c.error_count for c in correlations)
+        chain = [c.service for c in sorted(correlations, key=lambda c: c.cascade_depth)]
+        services = len(correlations)
+    else:
+        # Derive from timeline when MCP unavailable
+        error_entries = [e for e in timeline.entries if e.level in ("CRITICAL", "ERROR")]
+        total = len(error_entries)
+        seen: dict[str, None] = {}
+        for e in error_entries:
+            seen[e.service] = None
+        chain = list(seen.keys())
+        services = len(chain)
     return BlastRadius(
         total_errors=total,
-        services_affected=len(correlations),
+        services_affected=services,
         error_rate_per_service={},
         estimated_duration_minutes=round(duration, 1),
         cascade_chain=chain,
@@ -137,6 +150,6 @@ class ImpactCalculator:
             await toolset.close()
 
         blast = _parse_llm_response(result_text)
-        if blast is None or (blast.total_errors == 0 and blast.services_affected == 0 and correlations):
+        if blast is None or (blast.total_errors == 0 and blast.services_affected == 0):
             return _fallback(timeline, correlations)
         return blast

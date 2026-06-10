@@ -199,10 +199,13 @@ async def run_stream(
             # Stage 5
             draft = PostmortemDraft(
                 incident_id=incident_id,
+                title=f"Incident {incident_id} — {root_cause.primary_cause[:60]}",
+                severity="CRITICAL" if blast.services_affected >= 3 else "HIGH",
                 timeline=timeline,
                 correlations=correlations,
                 blast_radius=blast,
                 root_cause=root_cause,
+                recommendations=root_cause.recommendations,
             )
             yield emit("ReportWriter", {"status": "running"})
             await asyncio.sleep(0)

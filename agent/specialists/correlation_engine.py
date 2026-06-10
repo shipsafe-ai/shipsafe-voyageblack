@@ -40,6 +40,36 @@ Return ONLY this JSON (no prose, no markdown fences):
 """
 
 
+def _fallback_from_timeline(timeline: IncidentTimeline) -> list[ServiceCorrelation]:
+    import logging
+    logging.getLogger(__name__).warning("CorrelationEngine: MCP returned empty — deriving from timeline")
+    """Derive correlations from timeline when MCP tool unavailable."""
+    from collections import defaultdict
+    counts: dict[str, int] = defaultdict(int)
+    codes: dict[str, list[str]] = defaultdict(list)
+    first_seen: dict[str, datetime] = {}
+    for e in timeline.entries:
+        if e.level in ("CRITICAL", "ERROR"):
+            counts[e.service] += 1
+            if e.error_code and e.error_code not in codes[e.service]:
+                codes[e.service].append(e.error_code)
+            if e.service not in first_seen:
+                first_seen[e.service] = e.timestamp
+    if not counts:
+        return []
+    by_time = sorted(counts.keys(), key=lambda s: first_seen.get(s, datetime.max))
+    return [
+        ServiceCorrelation(
+            service=s,
+            error_count=counts[s],
+            error_codes=codes[s],
+            first_seen=first_seen.get(s),
+            cascade_depth=i,
+        )
+        for i, s in enumerate(by_time)
+    ]
+
+
 def _parse_llm_response(text: str) -> list[ServiceCorrelation] | None:
     text = text.strip()
     if not text:
@@ -86,8 +116,8 @@ class CorrelationEngine:
             await toolset.close()
 
         correlations = _parse_llm_response(result_text)
-        if correlations is None:
-            return []
+        if not correlations:  # None or empty list → derive from timeline
+            return _fallback_from_timeline(timeline)
         correlations = sorted(correlations, key=lambda c: c.cascade_depth)
         # Enforce unique depths if LLM assigned all 0 — re-rank by first_seen
         depths = [c.cascade_depth for c in correlations]

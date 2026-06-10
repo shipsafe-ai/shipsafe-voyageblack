@@ -4,6 +4,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "VoyageBlack — Incident Postmortem",
   description: "Automated postmortem generation from incident logs — powered by Elastic",
+  icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -12,7 +13,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-screen bg-bg-base text-text-primary antialiased">
         <header className="border-b border-border-subtle bg-bg-surface">
           <div className="mx-auto max-w-7xl px-6 py-4 flex items-center gap-3">
-            <div className="w-2 h-2 rounded-none bg-accent" />
+            <a href="https://shipsafe-landing-o34wppiwiq-uc.a.run.app"
+             className="font-mono text-xs text-text-tertiary hover:text-text-secondary transition-colors"
+             style={{ textDecoration: 'none' }}>
+            ← ShipSafe
+          </a>
+          <span className="text-border-strong">·</span>
+          <div className="w-2 h-2 rounded-none bg-accent" />
             <span className="font-mono text-sm tracking-widest text-text-secondary uppercase">
               VoyageBlack
             </span>

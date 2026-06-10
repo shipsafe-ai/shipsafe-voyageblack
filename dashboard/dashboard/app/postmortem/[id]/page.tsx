@@ -190,11 +190,13 @@ export default function PostmortemPage() {
             ))}
           </ul>
         )}
-        {draft.root_cause.evidence.length > 0 && (
+        {draft.root_cause.evidence.filter(e => e && e.length < 200 && !e.match(/^["{[]/)).length > 0 && (
           <div className="mt-4 space-y-1">
-            {draft.root_cause.evidence.map((e, i) => (
-              <div key={i} className="text-xs font-mono text-accent">{e}</div>
-            ))}
+            {draft.root_cause.evidence
+              .filter(e => e && e.length < 200 && !e.match(/^["{[]/))
+              .map((e, i) => (
+                <div key={i} className="text-xs font-mono text-accent">{e}</div>
+              ))}
           </div>
         )}
       </section>
