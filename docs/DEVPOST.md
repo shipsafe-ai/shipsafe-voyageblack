@@ -13,7 +13,7 @@ The postmortem is the most valuable artifact your team produces — and the one 
 
 The data you need is already sitting in Elasticsearch. What's missing is the 90 minutes of focused reconstruction nobody has after an outage. We built the agent that does it in 90 *seconds*.
 
-![Problem vs solution](problem-solution.png)
+![Problem vs solution](https://raw.githubusercontent.com/shipsafe-ai/shipsafe-voyageblack/main/docs/problem-solution.png)
 
 ## What it does
 
@@ -27,11 +27,11 @@ A six-stage pipeline on **Google ADK**, on **Cloud Run**, with **Gemini on Verte
 
 **System architecture — two Elastic MCP servers + ELSER:**
 
-![System architecture](architecture-overview.png)
+![System architecture](https://raw.githubusercontent.com/shipsafe-ai/shipsafe-voyageblack/main/docs/architecture-overview.png)
 
 **The pipeline** — `TimelineBuilder → CorrelationEngine → ImpactCalculator → RootCauseAnalyzer → ReportWriter → Critic`, gated by a human:
 
-![Multi-agent pipeline](architecture-pipeline.png)
+![Multi-agent pipeline](https://raw.githubusercontent.com/shipsafe-ai/shipsafe-voyageblack/main/docs/architecture-pipeline.png)
 
 ```mermaid
 flowchart TD
@@ -53,7 +53,7 @@ flowchart TD
 
 **Gemini is the brain** — logs become a structured timeline and cascade, Gemini reasons to a postmortem with confidence and cited evidence, and a Gemini Critic checks it:
 
-![Gemini reasoning flow](gemini-data-flow.png)
+![Gemini reasoning flow](https://raw.githubusercontent.com/shipsafe-ai/shipsafe-voyageblack/main/docs/gemini-data-flow.png)
 
 VoyageBlack integrates Elastic through **two** MCP servers: the **Agent Builder MCP** (five custom ELSER/ES|QL tools — `incident_logs_timewindow`, `incident_logs_semantic`, `service_error_correlation`, `similar_past_incident`) and the **standalone Elasticsearch MCP** (`esql`, for blast-radius aggregations). And it's the ShipSafe fleet's **reference implementation for live chain-of-thought** — all six stages stream Gemini's reasoning to the dashboard as it happens, via an `asyncio` thinking queue and SSE.
 
