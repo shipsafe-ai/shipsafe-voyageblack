@@ -30,12 +30,16 @@ stitching the timeline across services, finding which error came first
 versus which were downstream casualties, sizing the blast radius, and
 articulating the root cause in a sentence a human can act on.
 
+![Without VoyageBlack the outage is over but the postmortem takes 3 weeks of scrolling logs and ships too late; with VoyageBlack, ELSER rebuilds the timeline, Gemini writes the root cause, and it is done in 90 seconds — findable for next time](docs/problem-solution.png)
+
 ## How it works
 
 VoyageBlack is a six-stage multi-agent pipeline. Each stage is a Python
 specialist built on Google's Agent Development Kit (ADK), running as a
 code-owned service on Cloud Run. Gemini does the semantic reasoning that
 code cannot; your code formats the evidence and constrains the output.
+
+![VoyageBlack pipeline — TimelineBuilder, CorrelationEngine, ImpactCalculator, RootCauseAnalyzer and ReportWriter under the orchestrator, then a Gemini Critic, gated by a human before the postmortem is written to Elasticsearch and re-indexed with ELSER](docs/architecture-pipeline.png)
 
 ```
 Incident window (id + start + end)
@@ -118,6 +122,8 @@ incident again, and your fresh postmortem now surfaces as a match too.
 VoyageBlack integrates Elastic through **two** Model Context Protocol
 servers, each for what it does best.
 
+![System architecture — a Next.js dashboard and a FastAPI agent on Cloud Run, Gemini on Vertex AI, two MCP servers (Agent Builder ELSER tools + the standalone Elasticsearch MCP for ES|QL), and Elasticsearch with ELSER, gated by human approval before the write](docs/architecture-overview.png)
+
 ### Agent Builder MCP (custom domain tools)
 
 Five tools defined in the Kibana Agent Builder UI, exposed over the
@@ -151,6 +157,8 @@ via Docker stdio in local dev.
 ---
 
 ## Live Gemini thinking
+
+![Gemini as the brain — incident logs (Elastic ELSER + ES|QL) become a structured timeline and cascade, Gemini reasons to a postmortem with confidence and evidence, a Gemini Critic checks it, and a human approves before the write](docs/gemini-data-flow.png)
 
 VoyageBlack is the reference implementation for live chain-of-thought in
 the ShipSafe fleet. All six stages stream Gemini's reasoning to the UI as
